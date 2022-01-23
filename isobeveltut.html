@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Beveled Text Isosurfaces: POV-Ray Tutorial</title>
+<style>
+address
+{ margin:0; padding:0; line-height:1.2;
+}
+body
+{ margin:0; padding:0 5%; line-height:1.2;
+}
+code, pre
+{ font-family:"Consolas", "Lucida Console", "Liberation Mono", "Courier New", monospace;
+  letter-spacing:-0.05em;
+  font-size:100%; /* Make it legible. */
+}
+h1
+{ margin:0.4em 0;
+  padding: 0;
+  line-height:1.2;
+  font-family:Verdana, Arial, Helvetica, sans-serif;
+  text-align:center;
+}
+h2
+{ margin:0.9em -2% 0.3em;
+  border-top:2px solid gray;
+  padding:0.3em 0 0;
+  line-height:1.2;
+  font-family:Verdana, Arial, Helvetica, sans-serif;
+  text-align:center;
+  clear:both;
+}
+h3
+{ margin:0.9em 0% 0.3em -2%;
+  padding: 0;
+  line-height:1.2;
+  font-family:Arial, Helvetica, sans-serif;
+}
+img
+{ padding:1px;
+  border:1px inset #C93;
+  background:white;
+}
+li
+{ margin:0; padding:0; line-height:1.2;
+}
+ol, ul
+{ margin:0;
+  padding:0 0em 0 2em;
+  line-height:1.2;
+}
+p
+{ margin:0.6em 0 0.9em;
+  padding: 0;
+  line-height:1.2;
+}
+pre
+{ margin:0.6em 0 0.9em;
+  border:1px inset silver;
+  padding:0.3em 0.5em;
+  line-height:1.2;
+}
+pre var
+{ font-family:serif;
+  letter-spacing:0;
+  line-height:1;
+  font-size:95%;
+}
+table
+{ line-height:1.2;
+  margin:0.6em 0;
+  padding:0;
+  border:1px solid silver;
+  border-collapse:collapse;
+}
+td, th
+{ line-height:1.2;
+  padding:1px 0.3em;
+  border:1px solid silver;
+}
+#demo
+{ width:480px; height:270px;
+  float:right;
+}
+#maps
+{ width:388px;
+  float:right;
+  margin-left:0.5em;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Beveled Text Isosurfaces: a POV-Ray Tutorial</h1>
+
+<p><a href="isobeveltut.jpg"><img src="isobeveltut.jpg" alt="[Demo image]" id="demo"></a>
+
+This lesson describes a two-step process for creating beveled text in <a href="https://www.povray.org/">POV-Ray</a> with an isosurface. First an image map is created of the text to be manipulated; then the image map is read into a pigment function, which is used for the isosurface. Any font may be used; the technique can even be used on non-textual shapes.
+
+<p>The primary advantages of this technique over the <code>Bevelled_Text()</code> macro are that it lacks the inside corner artifacts produced by the latter, and that it can create rounded edges on the text, which <code>Bevelled_Text()</code> cannot do. It may even render faster in some cases.
+
+<p>The main disadvantage of the technique is that the scene description file that creates the image map takes a long time to parse, as each pixel is treated individually. The quality of the final product is also dependent on the resolution of the map image, which of course then directly impacts the creation parse time. Fortunately, the map image needs to be created only once. Another disadvantage is that the sides of curved and slanted stokes tend to show aliasing artifacts; but this can often be mitigated by using the actual text object for the non-beveled areas.
+
+<h3>Downloaded Files</h3>
+
+<p>The zip archive should contain these files:
+<ul>
+ <li><code>isobeveltut.html</code>
+ <li><code>isobeveltut.jpg</code>
+ <li><code>isobeveltut.pov</code>
+ <li><code>isobeveltut_make.pov</code>
+ <li><code>isobeveltut_make1.png</code>
+ <li><code>isobeveltut_make2.png</code>
+ <li><code>isobeveltut_make3.png</code>
+ <li><code>LICENSE</code>
+ <li><code>README.md</code>
+</ul>
+
+<h3>Prerequisite</h3>
+
+<p>For rounded edges, the <a href="http://lib.povray.org/searchcollection/index2.php?objectName=RoundEdge&amp;contributorTag=Cousin%20Ricky">RoundEdge module</a> (<a href="https://github.com/CousinRicky/POV-RoundEdge">RoundEdge mirror</a>) from the <a href="http://lib.povray.org/">POV-Ray Object Collection</a> is required. There are no prerequisites for chamfered edges.
+
+<h2>Generating the Image Map</h2>
+
+<p>The image map is created with the orthographic camera and uses the value of each pixel to record its distance from the text glyphs. For each pixel, <code>trace()</code> is called from the pixel’s location toward all directions in the <var>x</var>-<var>y</var> plane. This is done differently depending on whether the bevels are to be inside or outside of the font outline.
+
+<p>For an inner bevel, only points inside the glyphs need be tested. A pixel-sized box is created for each inside point, and colored according to its minimum distance from the glyph outline. The color is white at the desired bevel width or greater, and pro-rated gray at closer distances, with closer pixels being a darker gray. Because the tested points are all inside an object, every <code>trace()</code> is guaranteed to succeed, and the 4th argument can be omitted.
+
+<p>For an outer bevel, all points outside the text object, up to the bevel width outside its extents, must be tested. A pixel-sized box is created for each outside point, and colored according to its minimum distance from any glyph outline. The color is black at the desired bevel width or greater, and pro-rated gray at closer distances, with closer pixels being a lighter gray. All pixels inside a glyph are assigned white. The 4th argument (the normal) <em>must</em> be used in the <code>trace()</code> calls to exclude failed tests.
+
+<p>The text must fit entirely within the map image, with space to spare. Any non-black pixels on the border of the image will cause artifacts during the isosurface phase, and trigger a maximum gradient warning of an outrageous value.
+
+<p>The image map <em>must</em> use linear color values and span the full gray scale range from black to white:
+<pre>global_settings { assumed_gamma 1 }
+#default { finish { ambient 0 diffuse 0 emission 1 } }</pre>
+<p>For maximum accuracy, use a high dynamic range imaging (HDRI) output format, such as OpenEXR. To do this, put <code>+FE</code> on the command line. PNG (<code>+FN</code>) can also work, but if you use PNG, put <code>File_Gamma=1</code> on the command line for the smoothest results.
+
+<p>Anti-aliasing is neither necessary nor effective at this stage.
+
+<h3>The Example Scene Description File</h3>
+
+<div id="maps">
+<img src="isobeveltut_make1.png" alt="[Inner bevel, sans serif]">
+<img src="isobeveltut_make2.png" alt="[Outer bevel, serif]">
+<img src="isobeveltut_make3.png" alt="[Inner bevel, serif]">
+</div>
+
+<p>The scene description file <code>isobeveltut_make.pov</code> creates 3 images in an animation loop to be read later by the scene <code>isobeveltut.pov</code>. Frame 1 is for sans serif with inner beveling; frame 2 is for serif with outer beveling; and frame 3 is for serif with inner beveling. Note that for frame 3, the bevel width is greater than the half width of a stroke; this means there will be no flat surface on the final isosurface text.
+
+<p>The necessary command line arguments are in a single-line comment near the top of the file.
+
+<p>This scene description file tests all 360 degrees with a step size of one. Depending on your accuracy needs, you may be able to shorten the parse time with a larger step size.
+
+<p>The accompanying illustrations are scaled-down PNG versions of the images created by <code>isobeveltut_make.pov</code>. Note the fuzzy edges.
+
+<h2>Creating the Isosurface</h2>
+
+<p>In the following examples, <var>bevel_depth</var> is the value in the <var>z</var> dimension only; the bevel width is determined by the image map.
+
+<h3>The Pigment Function</h3>
+
+<p>The pigment function is created the same way, regardless of the form of the bevel:
+<pre>#declare Pigment = pigment
+{ image_map { exr "<var>input_image_name</var>" interpolate 2 }
+  // interpolate 2 gives the smoothest results.
+}
+#declare Scaled_pigment = pigment
+{ Pigment
+  translate -0.5
+  scale max_extent (Pigment) / max_extent (Pigment).y * <var>font_size</var> + z
+  // The + z prevents a scale by zero warning.
+}
+#declare fn_Pigment = function { pigment { Scaled_pigment } }</pre>
+
+<h3>Chamfered Edges</h3>
+
+<p>This code creates a chamfered text isosurface with the front of the text in the <var>x</var>-<var>y</var> plane.
+
+<pre>isosurface
+{ function { max (1 - z / <var>bevel_depth</var>, 0) - fn_Pigment (x, y, 0).x }
+  contained_by { box { &lt;<var>left</var>, <var>bottom</var>, 0>, &lt;<var>right</var>, <var>top</var>, <var>text_depth</var>> } }
+}</pre>
+<p>The <code>max_gradient</code> will be inversely proportional to <var>bevel_depth</var>.
+
+<h3>Rounded Edges</h3>
+
+<p>Rounded edges require function <code>RE_fn_Blob2()</code> from the RoundEdge module in the POV-Ray Object Collection. The following code creates a text isosurface with the front of the text in the <var>x</var>-<var>y</var> plane.
+<pre>
+#include "roundedge.inc"
+
+isosurface
+{ function
+  { sqrt
+    ( RE_fn_Blob2 (fn_Pigment (x, y, 0).x, 1)
+    + RE_fn_Blob2 (z, <var>bevel_depth</var>)
+    ) - 1
+  }
+  contained_by { box { &lt;<var>left</var>, <var>bottom</var>, 0>, &lt;<var>right</var>, <var>top</var>, <var>text_depth</var>> } }
+}</pre>
+
+<p>This next sequence creates a text isosurface with the back of the text in the <var>x</var>-<var>y</var> plane.
+<pre>
+#include "roundedge.inc"
+
+isosurface
+{ function
+  { sqrt
+    ( RE_fn_Blob2 (fn_Pigment (x, y, 0).x, 1)
+    + RE_fn_Blob2 (<var>text_depth</var> - abs (z), <var>bevel_depth</var>)
+    ) - 1
+  }
+  contained_by { box { &lt;<var>left</var>, <var>bottom</var>, -<var>text_depth</var>>, &lt;<var>right</var>, <var>top</var>, 0> } }
+}</pre>
+
+<p>Again, the <code>max_gradient</code>s will be inversely proportional to <var>bevel_depth</var>.
+
+<h3>Engraved Text</h3>
+
+<p>This code creates an isosurface box with text engraved into it.
+<pre>isosurface
+{ function { fn_Pigment (x, y, 0).x - z / <var>bevel_depth</var> }
+  contained_by { box { &lt;<var>left</var>, <var>bottom</var>, 0>, &lt;<var>right</var>, <var>top</var>, <var>text_depth</var>> } }
+}</pre>
+<p>Again, the <code>max_gradient</code> will be inversely proportional to <var>bevel_depth</var>.
+
+<h3>Other Possibilities</h3>
+
+<p>The <code>isosurface</code> object is as flexible as your imagination!
+
+<h3>Maximum Gradient Warnings</h3>
+
+<p>POV-Ray 3.7 fails to issue <code>max_gradient</code> warnings on declared isosurfaces. The following code will not generate any warnings, regardless of the specified <code>max_gradient</code> and maximum gradient found:
+<pre>#declare MyObject = isosurface { <var>...</var> }
+object { MyObject }</pre>
+
+<p>To establish and verify a <code>max_gradient</code> in POV-Ray 3.7, you must use the isosurface directly:
+<pre>isosurface { <var>...</var> }</pre>
+
+<p>After the maximum gradient is established during testing, you may rewrite your scene with a declared isosurface.
+
+<p>This bug is fixed in POV-Ray 3.8.
+
+<h3>The Example Scene Description File</h3>
+
+<p>The scene description file <code>isobeveltut.pov</code> demonstrates 4 types of edging. It should be rendered with a 16:9 aspect ratio and your favorite anti-alias options.
+
+<p>Please be aware that the code in the example scene description file differs somewhat from the sample code above. The latter is intended for the general cases, while the scene code is tailored for the specific needs of that scene. Most notably, in three of the examples, the <var>bevel_depth</var> is used for the isosurface container <var>z</var> dimension instead of the <var>text_depth</var>, with a regular <code>text</code> object or <code>box</code> object used to complete the model.
+
+<p>Here is a description of each of the examples:
+<ul>
+ <li>
+  <p>The upper left example demonstrates rounded edges on sans serif text. To shorten render the time, the isosurface container is only as deep as the bevel, and the remainder of the text is modeled with a regular <code>text</code> object.
+ </li><li>
+  <p>The upper right example demonstrates chamfered edges on sans serif text. To shorten render the time, the isosurface container is only as deep as the bevel, and the remainder of the text is modeled with a regular <code>text</code> object.
+ </li><li>
+  <p>The lower left example demonstrates chamfered edges external to the glyph outlines. Because the beveling is beyond the glyph outlines, a <code>text</code> object cannot model the non-beveled portion of the text, and the isosurface must be used for the entire depth. Aliasing artifacts can thus be seen on some of the curved and slanted strokes, which are not present on the two upper examples.
+  <p>An object pigment using the corresponding <code>text</code> object is used to color the text, with the inside volume colored light blue, and the remainder colored medium blue.
+ </li><li>
+  <p>The lower right example demonstrates engraved text. It uses the third image map, which has the wide bevel width such that there are no flat surfaces within the glyph areas. The isosurface container is only as deep as the bevel, and the isosurface is placed within a space that has been differenced from the larger rounded box.
+  <p>An object texture using the corresponding <code>text</code> object is used to texture the text, with the inside volume textured gold, and the remainder colored dark gray.
+ </li>
+</ul>
+
+<h2>Older POV-Ray Versions</h2>
+
+<p>This tutorial was written for POV-Ray 3.7 or later. If you are using an earlier version of POV-Ray, some changes are necessary. I have not tested this technique for any POV-Ray versions prior to 3.5.
+
+<h3>Generating the Image Map</h3>
+
+<ul>
+ <li>
+  <p>POV-Ray prior to 3.7 has deficient <a href="http://wiki.povray.org/content/Documentation:Tutorial_Section_3.3#Gamma_Handling">gamma handling</a> and lacks finish emission. If you have not upgraded, first use the following SDL:
+  <pre>global_settings
+{ assumed_gamma 1 // Yes, this is still important!
+  ambient_light 1 // May be omitted, as it is the default.
+}
+#default { finish { ambient 1 diffuse 0 } }</pre>
+ </li><li>
+  <p>OpenEXR is not supported. Of the supported formats, I recommend PNG (<code>+FN</code>), as POV-Ray records gamma information in PNG images in a manner that works for this technique across POV-Ray versions from 3.5 through 3.8. It is advisable to put <code>Display_Gamma=1</code> on the command line for the smoothest bevels.
+  <p>Note that in POV-Ray prior to 3.7, <code>Display_Gamma</code> played a double role, for image file creation as well as image display. For PNG files with 3.7 and later, <code>File_Gamma=1</code> would be the proper command.
+ </li><li>
+  <p>To scan the text object, the example scene description file uses nested <code>#for</code> loops, which are only available in POV-Ray 3.7 and later. Take a moment to learn <a href="http://wiki.povray.org/content/Reference:Conditional_Directives#The_for_Directive">how <code>#for</code> loops work</a>, and it should be easy to create the equivalent <a href="http://wiki.povray.org/content/Documentation:Tutorial_Section_3.8#What_about_nested_loops.3F"><code>#while</code> construction</a>.
+ </li>
+</ul>
+
+<h3>Creating the Isosurface</h3>
+
+<ul>
+ <li>
+  <p>In the <code>image_map</code> block, remember to use <code>png</code> instead of <code>exr</code>.
+ </li><li>
+  <p>Since <code>max_extent()</code> will not work on image maps, use the following SDL when defining <code>Scaled_pigment</code>:
+  <pre>  scale &lt;<var>input_image_width</var> / <var>input_image_height</var>, 1, 1> * <var>font_size</var></pre>
+ </li>
+</ul>
+
+<p>If you wish to edit the example scene description file, these changes are necessary:
+<ul>
+ <li>Downgrade the <code>#version</code> statement.
+ <li>Change the <code>c_Ambient</code> declaration to <code>#declare c_Ambient = rgb (Rad? 0: &lt;0.114, 0.145, 0.242>);</code>
+ <li>Change the default finish to <code>#default { finish { ambient c_Ambient diffuse Diffuse } }</code>
+ <li>In macro <code>Make_function()</code>, change <code>exr</code> to <code>png</code>.
+ <li>In macro <code>Make_function()</code>, change the scaling to <code>&lt;1200 / 500, 1, 1> * FONT_SIZE</code>.
+ <li>In the finish in the engraved text section, change the specular to <code>specular 0.55 metallic</code>.
+</ul>
+
+<h2>Gamma Considerations</h2>
+
+<p>The <code>Display_Gamma=1</code> and <code>File_Gamma=1</code> recommendations and the <code>assumed_gamma 1</code> requirement apply only to the creation of the image map. For the final scene with the isosurface, <code>Display_Gamma</code> and <code>File_Gamma</code> should remain as recommended in the POV-Ray documentation; and while <code>assumed_gamma 1</code> is encouraged in the isosurface scene, it is not necessary.
+
+<h2 id="About">About the Beveled Text Isosurface Tutorial</h2>
+
+<address>Copyright © 2020, 2022 Richard Callwood III. Some rights reserved.
+ <p>Permission is granted to copy, distribute and/or modify this document
+  under the terms of the GNU Free Documentation License, Version 1.3
+  or any later version published by the Free Software Foundation;
+  with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+  A copy of the license is included in the file <a href="LICENSE"><code>LICENSE</code></a>, or you may <a href="https://www.gnu.org/licenses/fdl-1.3.html">view the license online</a>.
+ <p>The example scene description files are licensed under the Apache License, Version 2.0, as described in the header comments.
+</address>
+
+<h3>Change Log</h3>
+<table>
+ <tr><th>Edition</th> <th>Date</th> <th>Remarks</th></tr>
+ <tr>
+  <td>Unversioned</td>
+  <td>2020 October 14</td>
+  <td>Initial upload to povray.binaries.tutorials</td>
+ </tr><tr>
+  <td>1.0.1</td>
+  <td>2022 January 23</td>
+  <td>The ‘<code>once</code>’ keyword is removed from the image map.</td>
+ </tr>
+</table>
+
+</body>
+</html>
